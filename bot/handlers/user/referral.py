@@ -6,162 +6,222 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from config.settings import Settings
 from bot.services.referral_service import ReferralService
-
-from bot.keyboards.inline.user_keyboards import get_back_to_main_menu_markup
+from bot.keyboards.inline.user_keyboards import (
+    get_back_to_main_menu_markup,
+    get_referral_link_keyboard
+)
 from bot.middlewares.i18n import JsonI18n
+from bot.utils.message_cleaner import send_clean
 
 router = Router(name="user_referral_router")
 
 
-async def referral_command_handler(event: Union[types.Message,
-                                                types.CallbackQuery],
-                                   settings: Settings, i18n_data: dict,
-                                   referral_service: ReferralService, bot: Bot,
-                                   session: AsyncSession):
+async def referral_command_handler(
+    event: Union[types.Message, types.CallbackQuery],
+    settings: Settings,
+    i18n_data: dict,
+    referral_service: ReferralService,
+    bot: Bot,
+    session: AsyncSession
+):
+    """Показать реферальную информацию пользователю."""
+
     current_lang = i18n_data.get("current_language", settings.DEFAULT_LANGUAGE)
     i18n: Optional[JsonI18n] = i18n_data.get("i18n_instance")
+    get_text = (
+        (lambda key, **kw: i18n.gettext(current_lang, key, **kw))
+        if i18n else (lambda key, **kw: key)
+    )
 
-    target_message_obj = event.message if isinstance(
-        event, types.CallbackQuery) else event
-    if not target_message_obj:
-        logging.error(
-            "Target message is None in referral_command_handler (possibly from callback without message)."
-        )
+    # Определяем, что редактировать — сообщение или создавать новое
+    target = event.message if isinstance(event, types.CallbackQuery) else event
+    if not target:
+        logging.error("referral_command_handler: target message is None")
         if isinstance(event, types.CallbackQuery):
-            await event.answer("Error displaying referral info.",
-                               show_alert=True)
+            try:
+                await event.answer(get_text("error_generating_referral_link"), show_alert=True)
+            except Exception:
+                pass
         return
 
+    # i18n / service check
     if not i18n or not referral_service:
-        logging.error(
-            "Dependencies (i18n or ReferralService) missing in referral_command_handler"
-        )
-        await target_message_obj.answer(
-            "Service error. Please try again later.")
-        if isinstance(event, types.CallbackQuery): await event.answer()
+        logging.error("Referral dependencies missing")
+        try:
+            await target.answer(get_text("error_generating_referral_link"))
+        except Exception:
+            pass
+        if isinstance(event, types.CallbackQuery):
+            try:
+                await event.answer()
+            except Exception:
+                pass
         return
 
-    _ = lambda key, **kwargs: i18n.gettext(current_lang, key, **kwargs)
-
+    # Получаем имя бота
     try:
         bot_info = await bot.get_me()
         bot_username = bot_info.username
-    except Exception as e_bot_info:
-        logging.error(
-            f"Failed to get bot info for referral link: {e_bot_info}")
-        await target_message_obj.answer(_("error_generating_referral_link"))
-        if isinstance(event, types.CallbackQuery): await event.answer()
+    except Exception as e:
+        logging.error(f"Failed to get bot username: {e}")
+        await send_clean(bot, target.chat.id, get_text("error_generating_referral_link"))
+        if isinstance(event, types.CallbackQuery):
+            try:
+                await event.answer()
+            except Exception:
+                pass
         return
 
     if not bot_username:
-        logging.error("Bot username is None, cannot generate referral link.")
-        await target_message_obj.answer(_("error_generating_referral_link"))
-        if isinstance(event, types.CallbackQuery): await event.answer()
+        logging.error("Bot username is None — Telegram username not set")
+        await send_clean(bot, target.chat.id, get_text("error_generating_referral_link"))
+        if isinstance(event, types.CallbackQuery):
+            try:
+                await event.answer()
+            except Exception:
+                pass
         return
 
-    inviter_user_id = event.from_user.id
+    user_id = event.from_user.id
+
+    # Генерация реферальной ссылки
     referral_link = await referral_service.generate_referral_link(
-        session, bot_username, inviter_user_id)
+        session, bot_username, user_id
+    )
 
     if not referral_link:
-        logging.error(
-            "Failed to generate referral link for user %s (probably missing DB record).",
-            inviter_user_id,
-        )
-        await target_message_obj.answer(_("error_generating_referral_link"))
+        logging.error(f"Failed generating referral link for user {user_id}")
+        await send_clean(bot, target.chat.id, get_text("error_generating_referral_link"))
         if isinstance(event, types.CallbackQuery):
-            await event.answer()
+            try:
+                await event.answer()
+            except Exception:
+                pass
         return
 
-    bonus_info_parts = []
-    if settings.subscription_options:
+    # Сбор бонусов
+    bonus_lines = []
+    for months, _amount in sorted(settings.subscription_options.items()):
+        inviter_bonus = settings.referral_bonus_inviter.get(months)
+        referee_bonus = settings.referral_bonus_referee.get(months)
 
-        for months_period_key, _price in sorted(
-                settings.subscription_options.items()):
-
-            inv_bonus = settings.referral_bonus_inviter.get(months_period_key)
-            ref_bonus = settings.referral_bonus_referee.get(months_period_key)
-            if inv_bonus is not None or ref_bonus is not None:
-                bonus_info_parts.append(
-                    _("referral_bonus_per_period",
-                      months=months_period_key,
-                      inviter_bonus_days=inv_bonus
-                      if inv_bonus is not None else _("no_bonus_placeholder"),
-                      referee_bonus_days=ref_bonus
-                      if ref_bonus is not None else _("no_bonus_placeholder")))
-
-    bonus_details_str = "\n".join(bonus_info_parts) if bonus_info_parts else _(
-        "referral_no_bonuses_configured")
-
-    # Get referral statistics
-    referral_stats = await referral_service.get_referral_stats(session, inviter_user_id)
-
-    text = _("referral_program_info_new",
-             referral_link=referral_link,
-             bonus_details=bonus_details_str,
-             invited_count=referral_stats["invited_count"],
-             purchased_count=referral_stats["purchased_count"])
-
-    from bot.keyboards.inline.user_keyboards import get_referral_link_keyboard
-    reply_markup_val = get_referral_link_keyboard(current_lang, i18n)
-
-    if isinstance(event, types.Message):
-        await event.answer(text,
-                           reply_markup=reply_markup_val,
-                           disable_web_page_preview=True)
-    elif isinstance(event, types.CallbackQuery) and event.message:
-        try:
-            await event.message.edit_text(text,
-                                          reply_markup=reply_markup_val,
-                                          disable_web_page_preview=True)
-        except Exception as e_edit:
-            logging.warning(
-                f"Failed to edit message for referral info: {e_edit}. Sending new one."
+        if inviter_bonus is not None or referee_bonus is not None:
+            bonus_lines.append(
+                get_text(
+                    "referral_bonus_per_period",
+                    months=months,
+                    inviter_bonus_days=inviter_bonus
+                    if inviter_bonus is not None
+                    else get_text("no_bonus_placeholder"),
+                    referee_bonus_days=referee_bonus
+                    if referee_bonus is not None
+                    else get_text("no_bonus_placeholder"),
+                )
             )
-            await event.message.answer(text,
-                                       reply_markup=reply_markup_val,
-                                       disable_web_page_preview=True)
-        await event.answer()
+
+    bonus_text = (
+        "\n".join(bonus_lines)
+        if bonus_lines
+        else get_text("referral_no_bonuses_configured")
+    )
+
+    # Статистика
+    stats = await referral_service.get_referral_stats(session, user_id)
+
+    text = get_text(
+        "referral_program_info_new",
+        referral_link=referral_link,
+        bonus_details=bonus_text,
+        invited_count=stats["invited_count"],
+        purchased_count=stats["purchased_count"],
+    )
+
+    reply_markup = get_referral_link_keyboard(current_lang, i18n)
+
+    # Ответ
+    if isinstance(event, types.Message):
+        await send_clean(
+            bot,
+            target.chat.id,
+            text,
+            reply_markup=reply_markup,
+            disable_web_page_preview=True
+        )
+    else:
+        try:
+            await target.edit_text(
+                text,
+                reply_markup=reply_markup,
+                disable_web_page_preview=True
+            )
+        except Exception:
+            await send_clean(
+                bot,
+                target.chat.id,
+                text,
+                reply_markup=reply_markup,
+                disable_web_page_preview=True
+            )
+
+        try:
+            await event.answer()
+        except Exception:
+            pass
 
 
 @router.callback_query(F.data.startswith("referral_action:"))
-async def referral_action_handler(callback: types.CallbackQuery, settings: Settings, 
-                                 i18n_data: dict, referral_service: ReferralService, 
-                                 bot: Bot, session: AsyncSession):
-    action = callback.data.split(":")[1]
+async def referral_action_handler(
+    callback: types.CallbackQuery,
+    settings: Settings,
+    i18n_data: dict,
+    referral_service: ReferralService,
+    bot: Bot,
+    session: AsyncSession
+):
+    """Обработка inline-действий: отправка сообщения для друзей и т.п."""
+
     current_lang = i18n_data.get("current_language", settings.DEFAULT_LANGUAGE)
     i18n = i18n_data.get("i18n_instance")
-    _ = lambda key, **kwargs: i18n.gettext(current_lang, key, **kwargs)
+    get_text = (
+        (lambda key, **kw: i18n.gettext(current_lang, key, **kw))
+        if i18n else (lambda key, **kw: key)
+    )
+
+    action = callback.data.split(":", 1)[1]
 
     if action == "share_message":
         try:
             bot_info = await bot.get_me()
             bot_username = bot_info.username
-            if not bot_username:
-                await callback.answer("Ошибка получения имени бота", show_alert=True)
-                return
+        except Exception:
+            await callback.answer(get_text("error_generating_referral_link"), show_alert=True)
+            return
 
-            inviter_user_id = callback.from_user.id
-            referral_link = await referral_service.generate_referral_link(
-                session, bot_username, inviter_user_id)
+        if not bot_username:
+            await callback.answer(get_text("error_generating_referral_link"), show_alert=True)
+            return
 
-            if not referral_link:
-                logging.error(
-                    "Failed to generate referral link for user %s via inline button.",
-                    inviter_user_id,
-                )
-                await callback.answer(_("error_generating_referral_link"), show_alert=True)
-                return
-            
-            friend_message = _("referral_friend_message", referral_link=referral_link)
-            
-            await callback.message.answer(
-                friend_message,
-                disable_web_page_preview=True
-            )
-            
+        user_id = callback.from_user.id
+
+        referral_link = await referral_service.generate_referral_link(
+            session, bot_username, user_id
+        )
+
+        if not referral_link:
+            await callback.answer(get_text("error_generating_referral_link"), show_alert=True)
+            return
+
+        friend_text = get_text("referral_friend_message", referral_link=referral_link)
+
+        try:
+            await callback.message.answer(friend_text, disable_web_page_preview=True)
         except Exception as e:
-            logging.error(f"Error in referral share message: {e}")
-            await callback.answer("Произошла ошибка", show_alert=True)
-        
-    await callback.answer()
+            logging.error(f"Failed to send friend referral message: {e}")
+            await callback.answer(get_text("error_generating_referral_link"), show_alert=True)
+            return
+
+    # Always acknowledge callback
+    try:
+        await callback.answer()
+    except Exception:
+        pass
