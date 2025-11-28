@@ -331,11 +331,7 @@ async def start_command_handler(message: types.Message,
 
     # welcome — now via send_clean
     if not settings.DISABLE_WELCOME_MESSAGE:
-        await send_clean(
-            message.bot,
-            message.chat.id,
-            _(key="welcome", user_name=hd.quote(user.full_name))
-        )
+        await message.answer(_(key="welcome", user_name=hd.quote(user.full_name)))
 
     # auto promo
     if promo_code_to_apply:
