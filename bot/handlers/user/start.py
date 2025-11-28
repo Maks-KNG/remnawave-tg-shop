@@ -19,7 +19,7 @@ from bot.keyboards.inline.user_keyboards import (
 )
 from bot.services.subscription_service import SubscriptionService
 from bot.services.panel_api_service import PanelApiService
-    from bot.services.referral_service import ReferralService
+from bot.services.referral_service import ReferralService
 from bot.services.promo_code_service import PromoCodeService
 from config.settings import Settings
 from bot.middlewares.i18n import JsonI18n
