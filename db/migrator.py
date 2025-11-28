@@ -112,6 +112,15 @@ def _migration_0003_normalize_referral_codes(connection: Connection) -> None:
         )
     )
 
+def _migration_0004_add_welcome_message_id(connection: Connection) -> None:
+    inspector = inspect(connection)
+    columns: Set[str] = {col["name"] for col in inspector.get_columns("users")}
+
+    if "welcome_message_id" not in columns:
+        connection.execute(
+            text("ALTER TABLE users ADD COLUMN welcome_message_id BIGINT")
+        )
+
 MIGRATIONS: List[Migration] = [
     Migration(
         id="0001_add_channel_subscription_fields",
@@ -127,6 +136,12 @@ MIGRATIONS: List[Migration] = [
         id="0003_normalize_referral_codes",
         description="Normalize referral codes to uppercase for consistent lookups",
         upgrade=_migration_0003_normalize_referral_codes,
+    ),
+
+    Migration(
+        id="0004_add_welcome_message_id",
+        description="Add column to store last welcome message id",
+        upgrade=_migration_0004_add_welcome_message_id,
     ),
 ]
 
