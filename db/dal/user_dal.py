@@ -359,4 +359,22 @@ async def delete_user_and_relations(session: AsyncSession, user_id: int) -> bool
 
     await session.delete(user)
     await session.flush()
+
+    # --- Welcome message tracking ----------------------------------------------
+
+    async def get_last_welcome_message_id(session: AsyncSession, user_id: int) -> Optional[int]:
+        """Return last welcome_message_id for user, or None."""
+        stmt = select(User.welcome_message_id).where(User.user_id == user_id)
+        result = await session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def set_last_welcome_message_id(session: AsyncSession, user_id: int, msg_id: int):
+        """Store last sent welcome message ID for later deletion."""
+        stmt = (
+            update(User)
+            .where(User.user_id == user_id)
+            .values(welcome_message_id=msg_id)
+        )
+        await session.execute(stmt)
+
     return True

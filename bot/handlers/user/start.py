@@ -28,6 +28,36 @@ from bot.utils.message_cleaner import send_clean
 
 router = Router(name="user_start_router")
 
+# ---------------------- OLD WELCOME HANDLING ----------------------
+
+async def delete_previous_welcome_message(bot: Bot, session: AsyncSession, user_id: int):
+    """Удаляет предыдущее приветственное сообщение для пользователя."""
+    try:
+        db_user = await user_dal.get_user_by_id(session, user_id)
+        if not db_user or not getattr(db_user, "welcome_message_id", None):
+            return
+
+        msg_id = db_user.welcome_message_id
+
+        try:
+            await bot.delete_message(chat_id=user_id, message_id=msg_id)
+        except (TelegramBadRequest, TelegramAPIError, TelegramForbiddenError):
+            pass
+
+        await user_dal.update_user(session, user_id, {"welcome_message_id": None})
+        await session.flush()
+
+    except Exception as e:
+        logging.error(f"Failed to delete previous welcome for {user_id}: {e}")
+
+
+async def store_welcome_message_id(session: AsyncSession, user_id: int, message_id: int):
+    """Сохраняет ID отправленного приветственного сообщения."""
+    try:
+        await user_dal.update_user(session, user_id, {"welcome_message_id": message_id})
+        await session.flush()
+    except Exception as e:
+        logging.error(f"Failed to store welcome message for {user_id}: {e}")
 
 async def send_main_menu(target_event: Union[types.Message, types.CallbackQuery],
                          settings: Settings,
@@ -329,9 +359,15 @@ async def start_command_handler(message: types.Message,
     if not await ensure_required_channel_subscription(message, settings, i18n, current_lang, session, db_user):
         return
 
-    # welcome — now via send_clean
+    # ---------------- DELETE OLD WELCOME ----------------
+    await delete_previous_welcome_message(message.bot, session, user_id)
+
+    # ---------------- SEND NEW WELCOME ------------------
     if not settings.DISABLE_WELCOME_MESSAGE:
-        await message.answer(_(key="welcome", user_name=hd.quote(user.full_name)))
+        sent = await message.answer(
+            _(key="welcome", user_name=hd.quote(user.full_name))
+        )
+        await store_welcome_message_id(session, user_id, sent.message_id)
 
     # auto promo
     if promo_code_to_apply:
