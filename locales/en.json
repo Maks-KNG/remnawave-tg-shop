@@ -1,5 +1,5 @@
 {
-  "welcome": "Welcome, {user_name}!",
+  "welcome": "\uD83D\uDC4B Welcome to KINGVPN.ONLINE!\\n\\n\uD83D\uDD10 Your connection is protected with modern encryption\\n\uD83D\uDE80 High speed and stable performance\\n\uD83D\uDCFA Smooth access to streaming and video services\\n✨ A convenient VPN inside Telegram — no registration, no hassle\\n\\nChoose a plan to start using it right now \uD83D\uDC47\",
   "channel_subscription_required": "To use the bot, join the channel and tap \"Check subscription\".",
   "channel_subscription_join_button": "Open channel",
   "channel_subscription_verify_button": "Check subscription",
@@ -28,7 +28,7 @@
   "subscribe_for_months_button": "{months} mo. - {price} {currency_symbol}",
   "choose_payment_method": "Choose payment method:",
   "pay_button": "💳 Pay",
-  "pay_with_yookassa_button": "💳 YooKassa",
+  "pay_with_yookassa_button": "💳 Paid with a bank card",
   "yookassa_autopay_flow_prompt": "Auto-renew is enabled. Choose how you'd like to pay:",
   "yookassa_autopay_pay_saved_card_button": "💳 Pay with saved card",
   "yookassa_autopay_pay_new_card_button": "➕ Pay with new card",

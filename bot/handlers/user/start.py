@@ -24,6 +24,7 @@ from bot.services.promo_code_service import PromoCodeService
 from config.settings import Settings
 from bot.middlewares.i18n import JsonI18n
 from bot.utils.text_sanitizer import sanitize_username, sanitize_display_name
+from bot.utils.message_cleaner import send_clean
 
 router = Router(name="user_start_router")
 
@@ -97,7 +98,13 @@ async def send_main_menu(target_event: Union[types.Message,
         if is_edit:
             await target_message_obj.edit_text(text, reply_markup=reply_markup)
         else:
-            await target_message_obj.answer(text, reply_markup=reply_markup)
+            # очищаем предыдущее сообщение и отправляем новое
+            await send_clean(
+                target_message_obj.bot,
+                target_message_obj.chat.id,
+                text,
+                reply_markup=reply_markup
+            )
 
         if isinstance(target_event, types.CallbackQuery):
             try:
