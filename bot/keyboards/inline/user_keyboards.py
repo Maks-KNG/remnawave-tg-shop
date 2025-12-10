@@ -3,7 +3,7 @@ from aiogram.types import InlineKeyboardMarkup, WebAppInfo
 from typing import Dict, Optional, List, Tuple
 
 from config.settings import Settings
-
+from utils.date_utils import pluralize_months
 
 def get_main_menu_inline_keyboard(
         lang: str,
@@ -90,24 +90,42 @@ def get_trial_confirmation_keyboard(lang: str,
     return builder.as_markup()
 
 
-def get_subscription_options_keyboard(subscription_options: Dict[
-    int, Optional[int]], currency_symbol_val: str, lang: str,
-                                      i18n_instance) -> InlineKeyboardMarkup:
+def get_subscription_options_keyboard(
+    subscription_options: Dict[int, Optional[int]],
+    currency_symbol_val: str,
+    lang: str,
+    i18n_instance
+) -> InlineKeyboardMarkup:
+
     _ = lambda key, **kwargs: i18n_instance.gettext(lang, key, **kwargs)
     builder = InlineKeyboardBuilder()
+
     if subscription_options:
         for months, price in subscription_options.items():
-            if price is not None:
-                button_text = _("subscribe_for_months_button",
-                                months=months,
-                                price=price,
-                                currency_symbol=currency_symbol_val)
-                builder.button(text=button_text,
-                               callback_data=f"subscribe_period:{months}")
+            if price is None:
+                continue
+
+            # Склонение месяцев
+            month_word = pluralize_months(months)
+
+            # Итоговый красивый текст кнопки
+            button_text = f"{months} {month_word} | {price} {currency_symbol_val}"
+
+            builder.button(
+                text=button_text,
+                callback_data=f"subscribe_period:{months}"
+            )
+
         builder.adjust(1)
+
+    # Кнопка "Назад"
     builder.row(
-        InlineKeyboardButton(text=_(key="back_to_main_menu_button"),
-                             callback_data="main_action:back_to_main"))
+        InlineKeyboardButton(
+            text=_(key="back_to_main_menu_button"),
+            callback_data="main_action:back_to_main"
+        )
+    )
+
     return builder.as_markup()
 
 
