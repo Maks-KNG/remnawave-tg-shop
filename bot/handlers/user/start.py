@@ -391,17 +391,25 @@ async def start_command_handler(message: types.Message,
 
     # ---------------- SEND NEW WELCOME (dynamic pricing) ------------------
     if not settings.DISABLE_WELCOME_MESSAGE:
+
         welcome_text = build_welcome_text(settings)
+
+        reply_markup = get_main_menu_inline_keyboard(
+            current_lang,
+            i18n,
+            settings,
+            show_trial_button=False
+        )
 
         welcome_msg = await message.answer(
             welcome_text,
             parse_mode="HTML",
-            reply_markup=get_welcome_buy_keyboard()
+            reply_markup=reply_markup
         )
 
         await store_welcome_message_id(session, user_id, welcome_msg.message_id)
 
-        # Закрепление (как у конкурентов)
+        # Закрепление
         try:
             await message.bot.pin_chat_message(
                 chat_id=message.chat.id,
