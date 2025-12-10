@@ -28,13 +28,12 @@ from bot.utils.message_cleaner import send_clean
 
 router = Router(name="user_start_router")
 
-def build_welcome_text(settings: Settings) -> str:
+def build_main_menu_welcome_text(settings: Settings) -> str:
     price_1 = settings.RUB_PRICE_1_MONTH
     price_3 = settings.RUB_PRICE_3_MONTHS
     price_6 = settings.RUB_PRICE_6_MONTHS
     price_12 = settings.RUB_PRICE_12_MONTHS
 
-    # Автоматическая цена “в месяц”
     price_3_monthly = price_3 // 3
     price_6_monthly = price_6 // 6
     price_12_monthly = price_12 // 12
@@ -43,7 +42,7 @@ def build_welcome_text(settings: Settings) -> str:
         "🎉 <b>Добро пожаловать в KINGVPN.ONLINE!</b>\n\n"
         "⚡ <b>Тарифы:</b>\n"
         f"• 1 месяц — <b>{price_1} ₽</b>\n"
-        f"• 3 месяца — <b>{price_3} ({price_3_monthly} ₽/мес) ₽</b>\n"
+        f"• 3 месяца — <b>{price_3} ₽</b> ({price_3_monthly} ₽/мес)\n"
         f"• 6 месяцев — <b>{price_6} ₽</b> ({price_6_monthly} ₽/мес)\n"
         f"• 12 месяцев — <b>{price_12} ₽</b> ({price_12_monthly} ₽/мес)\n\n"
         "🔥 Самый популярный — <u>3 месяца</u>\n\n"
@@ -54,37 +53,6 @@ def build_welcome_text(settings: Settings) -> str:
         "• Удобный VPN прямо внутри Telegram\n\n"
         "👇 Нажмите, чтобы начать пользоваться"
     )
-
-# ---------------------- OLD WELCOME HANDLING ----------------------
-
-async def delete_previous_welcome_message(bot: Bot, session: AsyncSession, user_id: int):
-    """Удаляет предыдущее приветственное сообщение для пользователя."""
-    try:
-        db_user = await user_dal.get_user_by_id(session, user_id)
-        if not db_user or not getattr(db_user, "welcome_message_id", None):
-            return
-
-        msg_id = db_user.welcome_message_id
-
-        try:
-            await bot.delete_message(chat_id=user_id, message_id=msg_id)
-        except (TelegramBadRequest, TelegramAPIError, TelegramForbiddenError):
-            pass
-
-        await user_dal.update_user(session, user_id, {"welcome_message_id": None})
-        await session.flush()
-
-    except Exception as e:
-        logging.error(f"Failed to delete previous welcome for {user_id}: {e}")
-
-
-async def store_welcome_message_id(session: AsyncSession, user_id: int, message_id: int):
-    """Сохраняет ID отправленного приветственного сообщения."""
-    try:
-        await user_dal.update_user(session, user_id, {"welcome_message_id": message_id})
-        await session.flush()
-    except Exception as e:
-        logging.error(f"Failed to store welcome message for {user_id}: {e}")
 
 async def send_main_menu(target_event: Union[types.Message, types.CallbackQuery],
                          settings: Settings,
@@ -127,7 +95,7 @@ async def send_main_menu(target_event: Union[types.Message, types.CallbackQuery]
                 "SubscriptionService missing has_had_any_subscription()!"
             )
 
-    text = _(key="main_menu_greeting", user_name=user_full_name)
+    text = build_main_menu_welcome_text(settings)
     reply_markup = get_main_menu_inline_keyboard(
         current_lang, i18n, settings, show_trial_button_in_menu
     )
@@ -385,38 +353,6 @@ async def start_command_handler(message: types.Message,
 
     if not await ensure_required_channel_subscription(message, settings, i18n, current_lang, session, db_user):
         return
-
-    # ---------------- DELETE OLD WELCOME ----------------
-    await delete_previous_welcome_message(message.bot, session, user_id)
-
-    # ---------------- SEND NEW WELCOME (dynamic pricing) ------------------
-    if not settings.DISABLE_WELCOME_MESSAGE:
-
-        welcome_text = build_welcome_text(settings)
-
-        reply_markup = get_main_menu_inline_keyboard(
-            current_lang,
-            i18n,
-            settings,
-            show_trial_button=False
-        )
-
-        welcome_msg = await message.answer(
-            welcome_text,
-            parse_mode="HTML",
-            reply_markup=reply_markup
-        )
-
-        await store_welcome_message_id(session, user_id, welcome_msg.message_id)
-
-        # Закрепление
-        try:
-            await message.bot.pin_chat_message(
-                chat_id=message.chat.id,
-                message_id=welcome_msg.message_id
-            )
-        except Exception:
-            pass
 
     # auto promo
     if promo_code_to_apply:
