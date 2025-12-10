@@ -28,6 +28,33 @@ from bot.utils.message_cleaner import send_clean
 
 router = Router(name="user_start_router")
 
+def build_welcome_text(settings: Settings) -> str:
+    price_1 = settings.RUB_PRICE_1_MONTH
+    price_3 = settings.RUB_PRICE_3_MONTHS
+    price_6 = settings.RUB_PRICE_6_MONTHS
+    price_12 = settings.RUB_PRICE_12_MONTHS
+
+    # Автоматическая цена “в месяц”
+    price_3_monthly = price_3 // 3
+    price_6_monthly = price_6 // 6
+    price_12_monthly = price_12 // 12
+
+    return (
+        "🎉 <b>Добро пожаловать в KINGVPN.ONLINE!</b>\n\n"
+        "⚡ <b>Тарифы:</b>\n"
+        f"• 1 месяц — <b>{price_1} ₽</b>\n"
+        f"• 3 месяца — <b>{price_3} ({price_3_monthly} ₽/мес) ₽</b>\n"
+        f"• 6 месяцев — <b>{price_6} ₽</b> ({price_6_monthly} ₽/мес)\n"
+        f"• 12 месяцев — <b>{price_12} ₽</b> ({price_12_monthly} ₽/мес)\n\n"
+        "🔥 Самый популярный — <u>3 месяца</u>\n\n"
+        "🛡 Что даёт подписка:\n"
+        "• Высокая скорость и стабильность\n"
+        "• Шифрование современного уровня\n"
+        "• Доступ к стримингам и зарубежным сайтам\n"
+        "• Удобный VPN прямо внутри Telegram\n\n"
+        "👇 Нажмите, чтобы начать пользоваться"
+    )
+
 # ---------------------- OLD WELCOME HANDLING ----------------------
 
 async def delete_previous_welcome_message(bot: Bot, session: AsyncSession, user_id: int):
@@ -362,12 +389,26 @@ async def start_command_handler(message: types.Message,
     # ---------------- DELETE OLD WELCOME ----------------
     await delete_previous_welcome_message(message.bot, session, user_id)
 
-    # ---------------- SEND NEW WELCOME ------------------
+    # ---------------- SEND NEW WELCOME (dynamic pricing) ------------------
     if not settings.DISABLE_WELCOME_MESSAGE:
-        sent = await message.answer(
-            _(key="welcome", user_name=hd.quote(user.full_name))
+        welcome_text = build_welcome_text(settings)
+
+        welcome_msg = await message.answer(
+            welcome_text,
+            parse_mode="HTML",
+            reply_markup=get_welcome_buy_keyboard()
         )
-        await store_welcome_message_id(session, user_id, sent.message_id)
+
+        await store_welcome_message_id(session, user_id, welcome_msg.message_id)
+
+        # Закрепление (как у конкурентов)
+        try:
+            await message.bot.pin_chat_message(
+                chat_id=message.chat.id,
+                message_id=welcome_msg.message_id
+            )
+        except Exception:
+            pass
 
     # auto promo
     if promo_code_to_apply:
