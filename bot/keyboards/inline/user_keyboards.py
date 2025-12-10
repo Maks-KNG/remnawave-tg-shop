@@ -108,6 +108,9 @@ def get_subscription_options_keyboard(
             # Склонение месяцев
             month_word = pluralize_months(months)
 
+            # Убираем .0, если число целое
+            price_display = int(price) if float(price).is_integer() else price
+
             # Итоговый красивый текст кнопки
             button_text = f"{months} {month_word} | {price} {currency_symbol_val}"
 
