@@ -3,7 +3,7 @@ from aiogram.types import InlineKeyboardMarkup, WebAppInfo
 from typing import Dict, Optional, List, Tuple
 
 from config.settings import Settings
-from utils.date_utils import pluralize_months
+from bot.utils.date_utils import pluralize_months
 
 def get_main_menu_inline_keyboard(
         lang: str,
