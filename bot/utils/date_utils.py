@@ -28,7 +28,7 @@ def add_months(base_dt: datetime, months_to_add: int) -> datetime:
 
 def pluralize_months(n: int) -> str:
     """
-    Возвращает правильную форму слова 'месяц' для русского языка:
+    Возвращает правильную форму слова 'месяц':
     1 месяц, 2–4 месяца, 5+ месяцев.
     """
     n_abs = abs(n) % 100
@@ -40,3 +40,4 @@ def pluralize_months(n: int) -> str:
         return "месяц"
     if 2 <= last_digit <= 4:
         return "месяца"
+    return "месяцев"
